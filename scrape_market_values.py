@@ -142,5 +142,60 @@ def run_self_test():
     print("self-test: OK")
 
 
+def solve_captcha(page, url, timeout_min):
+    print("Opening:", url)
+    print("If a 'Human Verification' page appears, solve the captcha in the opened browser window.")
+    page.goto(url, wait_until="domcontentloaded", timeout=60000)
+    deadline = time.monotonic() + timeout_min * 60
+    while time.monotonic() < deadline:
+        try:
+            content = page.content()
+        except Exception:
+            time.sleep(2)
+            continue
+        if "Human Verification" not in content and "profil/spieler" in content:
+            print("Captcha cleared.")
+            return
+        time.sleep(2)
+    raise TimeoutError(f"captcha not solved within {timeout_min} minutes")
+
+
+def fetch_text(context, url, retries=3):
+    last = None
+    for attempt in range(retries):
+        resp = context.request.get(url)
+        if resp.ok:
+            text = resp.text()
+            if "Human Verification" in text:
+                raise RuntimeError("WAF challenge returned; session cookies no longer valid")
+            return text
+        last = resp.status
+        time.sleep(2 * (attempt + 1))
+    raise RuntimeError(f"failed to fetch {url} (status {last})")
+
+
+def total_pages(html):
+    pages = [int(p) for p in re.findall(r"[?&]page=(\d+)", html)]
+    return max(pages) if pages else 1
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Scrape PL player market values from transfermarkt")
+    parser.add_argument("--url", default=DEFAULT_URL)
+    parser.add_argument("--timeout-min", type=int, default=10)
+    parser.add_argument("--self-test", action="store_true")
+    args = parser.parse_args()
+    if args.self_test:
+        run_self_test()
+        return 0
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=False)
+        context = browser.new_context(user_agent=UA, locale="en-US")
+        page = context.new_page()
+        solve_captcha(page, args.url, args.timeout_min)
+        browser.close()
+    return 0
+
+
 if __name__ == "__main__":
-    run_self_test()
+    raise SystemExit(main())
