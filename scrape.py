@@ -56,3 +56,19 @@ def get_season_players(season):
 
 def season_label(season):
     return f"{season}-{str(season + 1)[-2:]}"
+
+
+def write_season_csv(path, rows, columns):
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=columns)
+        writer.writeheader()
+        for r in rows:
+            meta = r.get("playerMetadata") or {}
+            out = {
+                "player_id": meta.get("id"),
+                "name": meta.get("name"),
+                "position": meta.get("position"),
+                "team": (meta.get("currentTeam") or {}).get("name", ""),
+            }
+            out.update(r.get("stats") or {})
+            writer.writerow(out)
