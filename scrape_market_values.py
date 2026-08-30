@@ -82,6 +82,38 @@ def parse_leaderboard(html):
     return players
 
 
+TIMELINE_FIXTURE = """<table id="yw1">
+<tr><th>Date</th><th>Market value</th><th>Age</th></tr>
+<tr><td>30.06.2025</td><td class="rechts hauptlink">€180.00m</td><td>24</td></tr>
+<tr><td>10.06.2024</td><td class="rechts hauptlink">€200.00m</td><td>23</td></tr>
+</table>"""
+
+TIMELINE_FIXTURE_FALLBACK = """<div class="row">
+<span class="date">15.06.2024</span>
+<span class="mw">€150.00m</span>
+</div>"""
+
+
+def parse_timeline(html):
+    events = []
+    for row in re.split(r"<tr[^>]*>", html):
+        dm = re.search(r"\d{1,2}\.\d{1,2}\.\d{4}", row)
+        vm = re.search(r"€\s*([\d.,]+(?:[kmb])?)", row, re.I)
+        if dm and vm:
+            date = parse_date(dm.group(0))
+            value = parse_value(vm.group(1))
+            if date and value is not None:
+                events.append({"date": date, "value_eur": value})
+    if not events:
+        for m in re.finditer(r"(\d{1,2})\.(\d{1,2})\.(\d{4}).{0,150}?€\s*([\d.,]+(?:[kmb])?)",
+                             html, re.I | re.S):
+            date = parse_date(f"{m.group(1)}.{m.group(2)}.{m.group(3)}")
+            value = parse_value(m.group(4))
+            if date and value is not None:
+                events.append({"date": date, "value_eur": value})
+    return events
+
+
 def run_self_test():
     assert parse_value("€180.00m") == 180_000_000
     assert parse_value("€25m") == 25_000_000
@@ -100,6 +132,12 @@ def run_self_test():
     assert lb[0]["club"] == "Manchester City"
     assert lb[0]["current_value_eur"] == 180_000_000
     assert lb[1]["name"] == "Mohamed Salah"
+    tl = parse_timeline(TIMELINE_FIXTURE)
+    assert len(tl) == 2
+    assert tl[0] == {"date": "2025-06-30", "value_eur": 180_000_000}
+    assert tl[1] == {"date": "2024-06-10", "value_eur": 200_000_000}
+    tl2 = parse_timeline(TIMELINE_FIXTURE_FALLBACK)
+    assert tl2 == [{"date": "2024-06-15", "value_eur": 150_000_000}]
     print("self-test: OK")
 
 
