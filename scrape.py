@@ -92,3 +92,74 @@ def write_xg_csv(path, rows):
         writer = csv.DictWriter(f, fieldnames=["player_id", "name"] + XG_FIELDS)
         writer.writeheader()
         writer.writerows(rows)
+
+
+def run_self_test():
+    for season in range(2018, 2026):
+        rows = get_season_players(season)
+        assert len(rows) >= 250, f"season {season}: only {len(rows)} players"
+        ids = [r["playerMetadata"]["id"] for r in rows]
+        assert len(ids) == len(set(ids)), f"season {season}: duplicate player ids"
+        keys = {k for r in rows for k in (r.get("stats") or {})}
+        assert 50 <= len(keys) <= 150, f"season {season}: {len(keys)} stat keys"
+        if season == 2018:
+            top = max((r["stats"].get("goals") or 0) for r in rows)
+            assert top == 22.0, f"2018/19 top scorer has {top} goals, expected 22"
+    data = fetch(f"{API}/api/v1/competitions/8/players/118748/stats")
+    xg = (data.get("stats") or {}).get("expectedGoals")
+    assert isinstance(xg, (int, float)), "career xG is not numeric"
+    print("self-test: OK")
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Scrape PL player stats from the official API")
+    parser.add_argument("--from", dest="year_from", type=int, default=2018)
+    parser.add_argument("--to", dest="year_to", type=int, default=2025)
+    parser.add_argument("--out", default="data")
+    parser.add_argument("--no-xg", action="store_true")
+    parser.add_argument("--force", action="store_true")
+    parser.add_argument("--self-test", action="store_true")
+    args = parser.parse_args()
+
+    if args.self_test:
+        run_self_test()
+        return 0
+
+    out_dir = Path(args.out)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    fetched = {}
+    all_ids = set()
+    for season in range(args.year_from, args.year_to + 1):
+        path = out_dir / f"players_{season_label(season)}.csv"
+        if path.exists() and not args.force:
+            print(f"skip {path} (already exists; use --force to re-scrape)")
+            continue
+        rows = get_season_players(season)
+        fetched[season] = rows
+        for r in rows:
+            meta = r.get("playerMetadata") or {}
+            if meta.get("id"):
+                all_ids.add(meta["id"])
+
+    if not fetched:
+        print("nothing to scrape")
+        return 0
+
+    stat_keys = sorted({k for rows in fetched.values() for r in rows for k in (r.get("stats") or {})})
+    columns = IDENTITY + stat_keys
+    for season, rows in fetched.items():
+        path = out_dir / f"players_{season_label(season)}.csv"
+        write_season_csv(path, rows, columns)
+        print(f"wrote {path} ({len(rows)} players)")
+
+    if not args.no_xg and all_ids:
+        xg_rows = get_career_xg(all_ids)
+        write_xg_csv(out_dir / "players_career_xg.csv", xg_rows)
+        print(f"wrote {out_dir / 'players_career_xg.csv'} ({len(xg_rows)} players)")
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
