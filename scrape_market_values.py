@@ -89,7 +89,7 @@ TIMELINE_FIXTURE = """<table id="yw1">
 </table>"""
 
 TIMELINE_FIXTURE_FALLBACK = """<div class="row">
-<span class="date">15.06.2024</span>
+<table><tr><td>15.06.2024</td><td>age 27</td></tr></table>
 <span class="mw">€150.00m</span>
 </div>"""
 
