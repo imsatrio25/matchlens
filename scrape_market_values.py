@@ -163,7 +163,14 @@ def solve_captcha(page, url, timeout_min):
 def fetch_text(context, url, retries=3):
     last = None
     for attempt in range(retries):
-        resp = context.request.get(url)
+        try:
+            resp = context.request.get(url)
+        except Exception as e:
+            last = e
+            if attempt < retries - 1:
+                time.sleep(2 * (attempt + 1))
+                continue
+            raise RuntimeError(f"failed to fetch {url}: {e}") from e
         if resp.ok:
             text = resp.text()
             if "Human Verification" in text:
