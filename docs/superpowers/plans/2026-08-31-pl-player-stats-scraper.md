@@ -375,7 +375,7 @@ import csv
 rows = list(csv.DictReader(open('/tmp/pl/players_2024-25.csv')))
 assert len(rows) >= 250, len(rows)
 assert len({r['player_id'] for r in rows}) == len(rows)
-assert 'goals' in rows[0] and 'goalAssists' in rows[0] and 'savesMade' in rows[0]
+assert 'goals' in rows[0] and 'goalAssists' in rows[0] and 'cleanSheets' in rows[0]
 print('real scrape ok:', len(rows), 'players')
 "
 ```
