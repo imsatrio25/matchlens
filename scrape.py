@@ -38,3 +38,21 @@ def fetch(url, retries=5):
                 continue
             raise
     raise RuntimeError(f"could not fetch {url}")
+
+
+def get_season_players(season):
+    rows, nxt = [], None
+    while True:
+        url = (f"{API}/api/v3/competitions/8/seasons/{season}/players/stats/"
+               "leaderboard?_sort=goals:desc&country=&_limit=100")
+        if nxt:
+            url += "&_next=" + nxt
+        data = fetch(url)
+        rows.extend(data.get("data") or [])
+        nxt = (data.get("pagination") or {}).get("_next")
+        if not nxt:
+            return rows
+
+
+def season_label(season):
+    return f"{season}-{str(season + 1)[-2:]}"
