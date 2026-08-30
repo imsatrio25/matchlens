@@ -182,18 +182,72 @@ def total_pages(html):
 def main():
     parser = argparse.ArgumentParser(description="Scrape PL player market values from transfermarkt")
     parser.add_argument("--url", default=DEFAULT_URL)
+    parser.add_argument("--from-year", type=int, default=2018)
+    parser.add_argument("--to-year", type=int, default=2026)
+    parser.add_argument("--out", default="data/transfermarkt_market_values.csv")
     parser.add_argument("--timeout-min", type=int, default=10)
+    parser.add_argument("--force", action="store_true")
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
+
     if args.self_test:
         run_self_test()
         return 0
+
+    out_path = Path(args.out)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    done_ids = set()
+    if out_path.exists() and not args.force:
+        with open(out_path, newline="", encoding="utf-8") as f:
+            for row in csv.DictReader(f):
+                done_ids.add(row["player_id"])
+        print(f"resume: {len(done_ids)} players already in {out_path}")
+
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=False)
         context = browser.new_context(user_agent=UA, locale="en-US")
         page = context.new_page()
         solve_captcha(page, args.url, args.timeout_min)
+
+        lb_html = fetch_text(context, args.url)
+        players = parse_leaderboard(lb_html)
+        for pageno in range(2, total_pages(lb_html) + 1):
+            players.extend(parse_leaderboard(fetch_text(context, f"{args.url}?page={pageno}")))
+        seen = {}
+        for pl in players:
+            seen.setdefault(pl["player_id"], pl)
+        players = [pl for pl in seen.values() if str(pl["player_id"]) not in done_ids]
+        print(f"scraping value history for {len(players)} players")
+
+        new_file = not out_path.exists()
+        with open(out_path, "a", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=["player_id", "player_name", "club", "date", "market_value_eur"])
+            if new_file:
+                writer.writeheader()
+            for i, pl in enumerate(players, 1):
+                try:
+                    turl = f"https://www.transfermarkt.com/{pl['slug']}/marktwerteverlauf/spieler/{pl['player_id']}"
+                    html = fetch_text(context, turl)
+                    events = parse_timeline(html)
+                    for ev in events:
+                        year = int(ev["date"][:4])
+                        if args.from_year <= year <= args.to_year:
+                            writer.writerow({
+                                "player_id": pl["player_id"],
+                                "player_name": pl["name"],
+                                "club": pl["club"],
+                                "date": ev["date"],
+                                "market_value_eur": ev["value_eur"],
+                            })
+                except RuntimeError as e:
+                    print(f"  skipping {pl['name']} (id {pl['player_id']}): {e}")
+                f.flush()
+                if i % 50 == 0:
+                    print(f"  {i}/{len(players)} players done")
         browser.close()
+
+    print(f"done -> {out_path}")
     return 0
 
 
