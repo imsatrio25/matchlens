@@ -175,6 +175,9 @@ def run_self_test():
         {"date": "2025-06-30", "value_eur": 180_000_000},
         {"date": "2024-06-10", "value_eur": 180_000_000},
     ]
+    assert total_pages('<a href=".../plus/1/page/9?ajax=yw1">9</a>') == 9
+    assert total_pages('<a href="...?page=3">3</a>') == 3
+    assert total_pages("no pagination here") == 1
     print("self-test: OK")
 
 
@@ -219,6 +222,7 @@ def fetch_text(context, url, retries=3):
 
 def total_pages(html):
     pages = [int(p) for p in re.findall(r"[?&]page=(\d+)", html)]
+    pages += [int(p) for p in re.findall(r"/page/(\d+)", html)]
     return max(pages) if pages else 1
 
 
@@ -276,7 +280,7 @@ def main():
         lb_html = fetch_text(context, args.url)
         players = parse_leaderboard(lb_html)
         for pageno in range(2, total_pages(lb_html) + 1):
-            players.extend(parse_leaderboard(fetch_text(context, f"{args.url}?page={pageno}")))
+            players.extend(parse_leaderboard(fetch_text(context, f"{args.url}/page/{pageno}?ajax=yw1")))
         seen = {}
         for pl in players:
             seen.setdefault(pl["player_id"], pl)
