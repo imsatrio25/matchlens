@@ -7,6 +7,7 @@ PL players into a CSV.
 """
 import argparse
 import csv
+import json
 import re
 import time
 from datetime import datetime
@@ -21,15 +22,25 @@ UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
 
 
 def parse_value(token):
-    m = re.search(r"([\d.,]+)\s*([kmb])?", (token or "").replace("€", "").strip(), re.I)
+    raw = (token or "").replace("€", "").strip()
+    is_mio = re.search(r"(?i)mio", raw) is not None
+    num_part = re.sub(r"(?i)(mio\.?|mrd\.?|millions?|billion)", "", raw)
+    m = re.search(r"([\d.,]+)\s*([kmb])?", num_part, re.I)
     if not m:
         return None
-    num_str, suffix = m.group(1), (m.group(2) or "").lower()
-    if suffix:
-        num = float(num_str.replace(",", "."))
+    n, suffix = m.group(1), (m.group(2) or "").lower()
+    if is_mio:
+        num = float(n.replace(",", "."))
+        factor = 1_000_000
+    elif suffix:
+        num = float(n.replace(",", "."))
+        factor = {"k": 1_000, "m": 1_000_000, "b": 1_000_000_000}[suffix]
+    elif "," in n and "." not in n and n.count(",") == 1:
+        num = float(n.replace(",", "."))
+        factor = 1
     else:
-        num = float(num_str.replace(",", ""))
-    factor = {"k": 1_000, "m": 1_000_000, "b": 1_000_000_000}.get(suffix, 1)
+        num = float(n.replace(",", ""))
+        factor = 1
     return int(round(num * factor))
 
 
@@ -115,11 +126,31 @@ def parse_timeline(html):
     return events
 
 
+TIMELINE_JSON_FIXTURE = {
+    "list": [
+        {"datum_mw": "30.06.2025", "mw": "€180.00m", "verein": "Manchester City"},
+        {"datum_mw": "10.06.2024", "mw": "180,00 Mio. €", "verein": "Manchester City"},
+    ]
+}
+
+
+def parse_timeline_json(data):
+    events = []
+    for entry in data.get("list") or []:
+        date = parse_date(entry.get("datum_mw", ""))
+        value = parse_value(entry.get("mw", ""))
+        if date and value is not None:
+            events.append({"date": date, "value_eur": value})
+    return events
+
+
 def run_self_test():
     assert parse_value("€180.00m") == 180_000_000
     assert parse_value("€25m") == 25_000_000
     assert parse_value("€500k") == 500_000
     assert parse_value("€1,800,000") == 1_800_000
+    assert parse_value("180,00 Mio. €") == 180_000_000
+    assert parse_value("1,8 Mio. €") == 1_800_000
     assert parse_value("-") is None
     assert parse_value("") is None
     assert parse_date("30.06.2025") == "2025-06-30"
@@ -139,6 +170,11 @@ def run_self_test():
     assert tl[1] == {"date": "2024-06-10", "value_eur": 200_000_000}
     tl2 = parse_timeline(TIMELINE_FIXTURE_FALLBACK)
     assert tl2 == [{"date": "2024-06-15", "value_eur": 150_000_000}]
+    tj = parse_timeline_json(TIMELINE_JSON_FIXTURE)
+    assert tj == [
+        {"date": "2025-06-30", "value_eur": 180_000_000},
+        {"date": "2024-06-10", "value_eur": 180_000_000},
+    ]
     print("self-test: OK")
 
 
@@ -184,6 +220,26 @@ def fetch_text(context, url, retries=3):
 def total_pages(html):
     pages = [int(p) for p in re.findall(r"[?&]page=(\d+)", html)]
     return max(pages) if pages else 1
+
+
+def fetch_json(context, url):
+    text = fetch_text(context, url)
+    try:
+        return json.loads(text)
+    except ValueError as e:
+        raise RuntimeError(f"non-JSON response from {url}: {e}") from e
+
+
+def get_player_events(context, player):
+    jurl = f"https://www.transfermarkt.com/ceapi/marketValueDevelopment/graph/{player['player_id']}"
+    try:
+        events = parse_timeline_json(fetch_json(context, jurl))
+        if events:
+            return events
+    except RuntimeError:
+        pass
+    turl = f"https://www.transfermarkt.com/{player['slug']}/marktwertverlauf/spieler/{player['player_id']}"
+    return parse_timeline(fetch_text(context, turl))
 
 
 def main():
@@ -234,9 +290,7 @@ def main():
                 writer.writeheader()
             for i, pl in enumerate(players, 1):
                 try:
-                    turl = f"https://www.transfermarkt.com/{pl['slug']}/marktwerteverlauf/spieler/{pl['player_id']}"
-                    html = fetch_text(context, turl)
-                    events = parse_timeline(html)
+                    events = get_player_events(context, pl)
                     for ev in events:
                         year = int(ev["date"][:4])
                         if args.from_year <= year <= args.to_year:
