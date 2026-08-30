@@ -42,6 +42,46 @@ def parse_date(token):
     return None
 
 
+LEADERBOARD_FIXTURE = """<table class="items">
+<tr class="odd">
+<td class="hauptlink"><a href="/erling-haaland/profil/spieler/819840">Erling Haaland</a></td>
+<td class="zentriert">24</td>
+<td class="rechts hauptlink"><a href="#">€180.00m</a></td>
+<td class="zentriert"><a href="/manchester-city/startseite/verein/281">Manchester City</a></td>
+</tr>
+<tr class="even">
+<td class="hauptlink"><a href="/mohamed-salah/profil/spieler/148296">Mohamed Salah</a></td>
+<td class="zentriert">33</td>
+<td class="rechts hauptlink"><a href="#">€55.00m</a></td>
+<td class="zentriert"><a href="/liverpool/startseite/verein/31">Liverpool</a></td>
+</tr>
+</table>"""
+
+
+def parse_leaderboard(html):
+    players = []
+    for row in re.split(r"<tr[^>]*>", html):
+        m = re.search(r'href="/([^"]*?)/profil/spieler/(\d+)"[^>]*>([^<]*)</a>', row)
+        if not m:
+            continue
+        value = None
+        vm = re.search(r"€\s*([\d.,]+(?:[kmb])?)", row, re.I)
+        if vm:
+            value = parse_value(vm.group(1))
+        club = ""
+        cm = re.search(r'/startseite/verein/\d+"[^>]*>([^<]+)</a>', row)
+        if cm:
+            club = cm.group(1).strip()
+        players.append({
+            "player_id": int(m.group(2)),
+            "slug": m.group(1),
+            "name": m.group(3).strip(),
+            "club": club,
+            "current_value_eur": value,
+        })
+    return players
+
+
 def run_self_test():
     assert parse_value("€180.00m") == 180_000_000
     assert parse_value("€25m") == 25_000_000
@@ -52,6 +92,14 @@ def run_self_test():
     assert parse_date("30.06.2025") == "2025-06-30"
     assert parse_date("2025-06-30") == "2025-06-30"
     assert parse_date("not a date") is None
+    lb = parse_leaderboard(LEADERBOARD_FIXTURE)
+    assert len(lb) == 2
+    assert lb[0]["player_id"] == 819840
+    assert lb[0]["slug"] == "erling-haaland"
+    assert lb[0]["name"] == "Erling Haaland"
+    assert lb[0]["club"] == "Manchester City"
+    assert lb[0]["current_value_eur"] == 180_000_000
+    assert lb[1]["name"] == "Mohamed Salah"
     print("self-test: OK")
 
 
