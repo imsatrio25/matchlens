@@ -153,7 +153,7 @@ def main():
         write_season_csv(path, rows, columns)
         print(f"wrote {path} ({len(rows)} players)")
 
-    if not args.no_xg and all_ids:
+    if not args.no_xg and all_ids and (not (out_dir / "players_career_xg.csv").exists() or args.force):
         xg_rows = get_career_xg(all_ids)
         write_xg_csv(out_dir / "players_career_xg.csv", xg_rows)
         print(f"wrote {out_dir / 'players_career_xg.csv'} ({len(xg_rows)} players)")
