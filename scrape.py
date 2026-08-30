@@ -72,3 +72,23 @@ def write_season_csv(path, rows, columns):
             }
             out.update(r.get("stats") or {})
             writer.writerow(out)
+
+
+def get_career_xg(player_ids):
+    rows = []
+    for pid in sorted(set(player_ids)):
+        data = fetch(f"{API}/api/v1/competitions/8/players/{pid}/stats")
+        stats = data.get("stats") or {}
+        row = {"player_id": pid, "name": (data.get("player") or {}).get("name", "")}
+        for field in XG_FIELDS:
+            row[field] = stats.get(field)
+        rows.append(row)
+        time.sleep(0.1)
+    return rows
+
+
+def write_xg_csv(path, rows):
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=["player_id", "name"] + XG_FIELDS)
+        writer.writeheader()
+        writer.writerows(rows)
