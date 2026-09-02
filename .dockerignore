@@ -1,0 +1,12 @@
+.git
+.gitignore
+.worktrees
+.superpowers
+frontend/node_modules
+frontend/.next
+__pycache__
+.pytest_cache
+.env
+Vaults-ISA-Obs
+*.log
+.DS_Store

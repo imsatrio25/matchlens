@@ -1,0 +1,23 @@
+# ponytail: nginx reverse proxy for VPS with domain + letsencrypt
+# copy to /etc/nginx/sites-available/matchlens and symlink to sites-enabled
+server {
+    listen 80;
+    server_name your-domain.com;
+
+    # frontend
+    location / {
+        proxy_pass http://localhost:5180;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+    }
+    # backend api
+    location /api/ {
+        proxy_pass http://localhost:5181;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+}
+# then: sudo certbot --nginx -d your-domain.com

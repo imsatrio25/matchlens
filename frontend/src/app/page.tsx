@@ -7,6 +7,7 @@ import { GalaxyData, GalaxyNode } from '../types/galaxy';
 import { fetchGalaxyData, fetchPlayerDossier, fetchScoutAnalysis, queryScout } from '../services/api';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5181/api';
+const NGROK_HDR = { 'ngrok-skip-browser-warning': 'true' } as const;
 
 const CLUSTER_COLOR: Record<number, string> = {
   0: '#ef4444', // Isolated Box Finishers - red
@@ -165,7 +166,7 @@ export default function StyleGalaxyPage() {
     fetchGalaxyData().then(setData).catch((e) => setErr(e.message));
   }, []);
   useEffect(() => {
-    fetch(`${API_BASE}/trajectories`).then(r=>r.json()).then(setTrajMap).catch(()=>{});
+    fetch(`${API_BASE}/trajectories`, { headers: NGROK_HDR }).then(r=>r.json()).then(setTrajMap).catch(()=>{});
   }, []);
 
   const filtered = useMemo(() => {
@@ -222,7 +223,7 @@ export default function StyleGalaxyPage() {
     }
     // normal name/team search
     try {
-      const res = await fetch(`${API_BASE}/search?q=${encodeURIComponent(q)}&position=${posFilter}${undervalued ? '&undervalued_only=true' : ''}`);
+      const res = await fetch(`${API_BASE}/search?q=${encodeURIComponent(q)}&position=${posFilter}${undervalued ? '&undervalued_only=true' : ''}`, { headers: NGROK_HDR });
       const arr = await res.json();
       if (arr[0]) {
         setHitId(arr[0].player_id);

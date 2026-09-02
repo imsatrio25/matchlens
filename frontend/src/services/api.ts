@@ -1,6 +1,7 @@
 import { GalaxyData, GalaxyNode } from '../types/galaxy';
 
-// ponytail: dynamic host so phone via Tailscale/LAN hits same backend without env rebuild
+// ponytail: dynamic host so phone via Tailscale/LAN hits same backend without env rebuild + ngrok interstitial bypass
+const NGROK_HDR = { 'ngrok-skip-browser-warning': 'true' } as const;
 function getApiBase() {
   if (process.env.NEXT_PUBLIC_API_URL) return process.env.NEXT_PUBLIC_API_URL;
   if (typeof window !== 'undefined') {
@@ -12,13 +13,13 @@ function getApiBase() {
 const API_BASE = getApiBase();
 
 export async function fetchGalaxyData(): Promise<GalaxyData> {
-  const res = await fetch(`${API_BASE}/galaxy`, { cache: 'no-store' });
+  const res = await fetch(`${API_BASE}/galaxy`, { cache: 'no-store', headers: NGROK_HDR });
   if (!res.ok) throw new Error('Failed to fetch galaxy data');
   return res.json();
 }
 
 export async function fetchPlayerDossier(playerId: string): Promise<GalaxyNode> {
-  const res = await fetch(`${API_BASE}/players/${playerId}`);
+  const res = await fetch(`${API_BASE}/players/${playerId}`, { headers: NGROK_HDR });
   if (!res.ok) throw new Error('Failed to fetch player dossier');
   return res.json();
 }
@@ -26,7 +27,7 @@ export async function fetchPlayerDossier(playerId: string): Promise<GalaxyNode> 
 export async function fetchScoutAnalysis(playerId: string): Promise<{ memo: string; player_name: string }> {
   const res = await fetch(`${API_BASE}/scout/analyze`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...NGROK_HDR },
     body: JSON.stringify({ player_id: playerId }),
   });
   if (!res.ok) throw new Error('Failed to generate scout analysis');
@@ -36,7 +37,7 @@ export async function fetchScoutAnalysis(playerId: string): Promise<{ memo: stri
 export async function queryScout(query: string, targetPlayerId?: string): Promise<{ response: string; recommended_players: any[] }> {
   const res = await fetch(`${API_BASE}/scout/query`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...NGROK_HDR },
     body: JSON.stringify({ query, target_player_id: targetPlayerId }),
   });
   if (!res.ok) throw new Error('Failed to query AI scout');
