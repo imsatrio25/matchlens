@@ -3,3 +3,10 @@
 data/
 __pycache__/
 .superpowers/
+.env
+.DS_Store
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+*.pyc
+.pytest_cache/

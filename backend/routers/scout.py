@@ -2,7 +2,7 @@ import json
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional
-from backend.config import GEMINI_API_KEY
+from backend.config import OPENROUTER_API_KEY
 from backend.db import get_db_connection
 
 router = APIRouter(prefix="/api/scout", tags=["scout"])
@@ -14,14 +14,34 @@ class ScoutQueryRequest(BaseModel):
     query: str
     target_player_id: Optional[str] = None
 
-def get_gemini_client():
-    if not GEMINI_API_KEY:
+def call_openrouter(prompt: str) -> str | None:
+    # ponytail: only Minimax M3 free via OpenRouter — no Gemini/deterministic fallback per user request
+    if not OPENROUTER_API_KEY:
         return None
     try:
-        from google import genai
-        return genai.Client(api_key=GEMINI_API_KEY)
-    except Exception:
-        return None
+        import httpx
+        # minimax m3 free is currently free on OpenRouter; try :free suffix first
+        for model in ["minimax/minimax-m3:free", "minimax/minimax-m3", "minimax/minimax-m2.1:free", "minimax/minimax-m2.1"]:
+            try:
+                r = httpx.post(
+                    "https://openrouter.ai/api/v1/chat/completions",
+                    headers={"Authorization": f"Bearer {OPENROUTER_API_KEY}", "Content-Type": "application/json", "HTTP-Referer": "https://matchlens.local", "X-Title": "Style Galaxy"},
+                    json={"model": model, "messages": [{"role": "user", "content": prompt}], "max_tokens": 420, "temperature": 0.7},
+                    timeout=12,
+                )
+                if r.status_code == 200:
+                    j = r.json()
+                    txt = j["choices"][0]["message"]["content"]
+                    if txt:
+                        return txt
+                else:
+                    print(f"[scout] OpenRouter {model} {r.status_code}: {r.text[:500]}")
+            except Exception as e:
+                print(f"[scout] OpenRouter {model} failed: {e}")
+                continue
+    except Exception as e:
+        print(f"[scout] OpenRouter call failed: {e}")
+    return None
 
 @router.post("/analyze")
 def analyze_player(req: ScoutAnalyzeRequest):
@@ -70,29 +90,11 @@ Your memo must highlight:
 2. Direct comparison to their closest style twins on the galaxy map.
 3. Financial arbitrage verdict (Is he a bargain, fairly priced, or overvalued?).
 """
-    client = get_gemini_client()
-    if client:
-        try:
-            response = client.models.generate_content(
-                model='gemini-2.5-flash',
-                contents=prompt
-            )
-            return {"memo": response.text, "player_name": name}
-        except Exception as e:
-            pass
-            
-    # Deterministic fallback scout memo if Gemini client is offline or key missing
-    arbitrage_text = f"an undervalued gem with €{abs(residual):,} surplus" if residual > 0 else f"commanding an elite star premium of €{abs(residual):,}"
-    top_twin = neighbors[0].get('name', 'league peers') if (neighbors and isinstance(neighbors[0], dict)) else "league peers"
-    best_dim = max(radar, key=radar.get) if radar else "performance"
-    best_dim_val = radar.get(best_dim, 50) if radar else 50
-    fallback_memo = (
-        f"**Tactical Archetype:** {name} operates as a quintessential '{cluster}' for {team}. "
-        f"His highest-rated dimension is {best_dim.title()} ({best_dim_val}th percentile).\n\n"
-        f"**Spatial Twins:** On the galaxy manifold, his closest statistical twin is {top_twin}. "
-        f"Financially, our Moneyball residual model rates him as {arbitrage_text}."
-    )
-    return {"memo": fallback_memo, "player_name": name}
+    # ponytail: only Minimax M3 free — no fallback per user request; 503 if OpenRouter blocked
+    or_txt = call_openrouter(prompt)
+    if or_txt:
+        return {"memo": or_txt, "player_name": name}
+    raise HTTPException(status_code=503, detail="Minimax M3 via OpenRouter unavailable — check OPENROUTER_API_KEY and enable Minimax provider at https://openrouter.ai/settings/privacy (set to All). Free model tried: minimax/minimax-m3:free")
 
 @router.post("/query")
 def natural_scout_query(req: ScoutQueryRequest):
@@ -115,22 +117,14 @@ def natural_scout_query(req: ScoutQueryRequest):
         for r in rows
     ]
     
-    client = get_gemini_client()
-    if client:
-        prompt = f"""
+    prompt = f"""
 A user asks: "{req.query}"
 Based on our Premier League Moneyball database, here are the top undervalued arbitrage opportunities:
 {json.dumps(candidates)}
 
 Provide a sharp, 3-bullet executive scout response recommending the best targets and explaining the geometric/financial reasoning.
 """
-        try:
-            res = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
-            return {"response": res.text, "recommended_players": candidates}
-        except Exception:
-            pass
-            
-    return {
-        "response": f"Based on style similarity and residual value efficiency, here are the top value arbitrage targets matching your query.",
-        "recommended_players": candidates
-    }
+    or_txt = call_openrouter(prompt)
+    if or_txt:
+        return {"response": or_txt, "recommended_players": candidates}
+    raise HTTPException(status_code=503, detail="Minimax M3 via OpenRouter unavailable — enable Minimax provider at https://openrouter.ai/settings/privacy. Tried minimax/minimax-m3:free")

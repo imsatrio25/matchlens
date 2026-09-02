@@ -33,11 +33,11 @@ def compute_galaxy_manifold_and_residuals(career_df: pd.DataFrame, season_df: pd
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
     
-    # 2. UMAP 3D Projection
+    # 2. UMAP 3D Projection — native spread for airier voids (was 15/0.18 dense)
     reducer = umap.UMAP(
         n_components=3,
-        n_neighbors=15,
-        min_dist=0.18,
+        n_neighbors=12,
+        min_dist=0.45,
         metric='cosine',
         random_state=42
     )
@@ -93,7 +93,9 @@ def compute_galaxy_manifold_and_residuals(career_df: pd.DataFrame, season_df: pd
     res_scaler = RobustScaler()
     res_scaled = res_scaler.fit_transform(df[['value_residual_eur']].values).flatten()
     df['value_efficiency_score'] = np.round(1.0 / (1.0 + np.exp(-res_scaled)) * 100, 1)
-    df['is_undervalued_gem'] = df['value_residual_eur'] > 12_000_000
+    # ponytail: fixed 12M threshold never triggered (max residual ~0.9M on 848 players) -> use top 15% residuals as gems
+    gem_cutoff = float(df['value_residual_eur'].quantile(0.85))
+    df['is_undervalued_gem'] = df['value_residual_eur'] >= gem_cutoff
     
     # 5. High-Dimensional Cosine Similarity Matrix (Top-5 Style Twins)
     sim_matrix = cosine_similarity(X_scaled)

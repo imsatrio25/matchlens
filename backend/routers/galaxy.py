@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, BackgroundTasks
 from typing import Optional, List
 from backend.db import get_db_connection
 
@@ -149,3 +149,33 @@ def search_players(
         ]
     conn.close()
     return results
+
+@router.get("/trajectories")
+def get_all_trajectories():
+    # ponytail: minimal — returns season_order → coords for galaxy morph scrubber
+    conn = get_db_connection()
+    with conn.cursor() as cur:
+        cur.execute("SELECT player_id, season, season_order, coord_x, coord_y, coord_z, xg_per_90 FROM player_career_trajectories ORDER BY season_order ASC;")
+        rows = cur.fetchall()
+    conn.close()
+    # group by player_id
+    grouped: dict = {}
+    for r in rows:
+        pid = r[0]
+        grouped.setdefault(pid, []).append({"season": r[1], "season_order": r[2], "coords": [float(r[3]), float(r[4]), float(r[5])], "xg_per_90": float(r[6])})
+    return grouped
+
+@router.post("/galaxy/rebuild")
+def rebuild_galaxy():
+    # ponytail: handler only — actual UMAP+regression training delegated to user via this endpoint
+    try:
+        from backend.pipeline.seed_db import run_seed_pipeline
+        run_seed_pipeline()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Galaxy rebuild failed: {e}")
+    conn = get_db_connection()
+    with conn.cursor() as cur:
+        cur.execute("SELECT count(*) FROM galaxy_nodes;")
+        count = cur.fetchone()[0]
+    conn.close()
+    return {"status": "rebuilt", "nodes": count, "message": "UMAP + fair-value model retrained and galaxy_nodes refreshed."}

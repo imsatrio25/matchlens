@@ -8,3 +8,4 @@ DATABASE_URL = os.getenv(
     "postgresql://satrio@localhost:5432/matchlens"
 )
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
